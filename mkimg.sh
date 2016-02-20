@@ -66,11 +66,12 @@ cat > $ROOT/etc/iptables/iptables.rules <<'EOF'
 -A INPUT -j REJECT --reject-with icmp-proto-unreachable
 -A TCP -p tcp -m tcp --dport 22 -j ACCEPT
 COMMIT
+EOF
 
 echo "geoff ALL=(ALL) ALL" >> $ROOT/etc/sudoers
 syslinux-install_update -i -a -m -c $ROOT/
 
-arch-chroot <<'EOF'
+arch-chroot $ROOT <<'EOF'
 locale-gen
 systemctl enable dhcpcd@enp1s0
 systemctl enable sshd.service
