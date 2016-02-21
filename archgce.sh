@@ -9,14 +9,13 @@ which gcloud >/dev/null || exit 1
 IMG=disk.raw
 
 ROOT=${ROOT:-$PWD/root}
-HOSTNAME=${HOSTNAME:-archlinux}
+IMAGEHOSTNAME=${IMAGEHOSTNAME:-archlinux}
 IMAGENAME=${IMAGENAME:-archlinux}
 SIZE=${SIZE:-6G}
 
 gce_mount() {
     local loopdev=$(sudo losetup --find --show --partscan $IMG)
-    local bootdev=${loopdev}p1
-    local rootdev=${loopdev}p2
+    local rootdev=${loopdev}p1
 
     sudo rm -rf --preserve-root $ROOT
     sudo mkdir $ROOT
@@ -27,15 +26,8 @@ gce_mount() {
 
     if [[ $fs_exists -ne 0 ]]; then
 	sudo mkfs.ext4 -b 4096 -L root $rootdev
-	sudo mkfs.ext4 -b 4096 -L boot $bootdev
 	sudo mount $rootdev $ROOT
     fi
-
-    if [[ ! -e $ROOT/boot ]]; then
-	sudo mkdir $ROOT/boot
-    fi
-
-    sudo mount $bootdev $ROOT/boot
 }
 
 gce_unmount_all() {
@@ -50,21 +42,20 @@ gce_create() {
     truncate -s $SIZE $IMG
     sudo sfdisk $IMG <<'EOF'
 label: dos
-start=2048,size=128M,type=83,bootable
-type=83
+start=2048,type=83,bootable
 EOF
 
     gce_mount
-    sudo pacstrap -c -M $ROOT base syslinux openssh ntp sudo mg git tmux
+    sudo pacstrap -c -M $ROOT base syslinux nginx openssh ntp sudo mg git tmux
 
     sudo tee -a $ROOT/etc/fstab <<'EOF'
-/dev/sda2  /       ext4    rw,relatime,data=ordered    0 1
-/dev/sda1  /boot   ext4    rw,relatime,data=ordered    0 2
+/dev/sda1  /       ext4    rw,relatime,data=ordered    0 1
 EOF
-    sudo sed -i "s#root=[^ ]*#root=/dev/sda2 loglevel=5#g" $ROOT/boot/syslinux/syslinux.cfg
-    sudo sed -i "s#DEFAULT arch#DEFAULT archfallback#" $ROOT/boot/syslinux/syslinux.cfg
+    sudo sed -i "s#root=[^ ]*#root=/dev/sda1 loglevel=5#g" $ROOT/boot/syslinux/syslinux.cfg
+    sudo sed -i "s#DEFAULT [^ ]*#DEFAULT archfallback#" $ROOT/boot/syslinux/syslinux.cfg
+    sudo sed -i "s#TIMEOUT [^ ]*#TIMEOUT 20#" $ROOT/boot/syslinux/syslinux.cfg
 
-    echo $HOSTNAME | sudo tee $ROOT/etc/hostname
+    echo $IMAGEHOSTNAME | sudo tee $ROOT/etc/hostname
     sudo ln -s ../usr/share/zoneinfo/UTC $ROOT/etc/localtime
     echo en_US.UTF-8 UTF-8 | sudo tee -a $ROOT/etc/locale.gen
     echo "LANG=en_US.UTF-8" | sudo tee $ROOT/etc/locale.conf
@@ -101,15 +92,59 @@ EOF
     echo ServerAliveInterval 450 | sudo tee -a $ROOT/etc/ssh/ssh_config
     echo ClientAliveInterval 450 | sudo tee -a $ROOT/etc/ssh/sshd_config
 
+    sudo tee $ROOT/etc/nginx/nginx.conf <<'EOF'
+worker_processes 4;
+events {
+  worker_connections 1024;
+}
+
+http {
+  include gfrh.include;
+
+  server {
+    listen 80;
+    location / {
+        return 404;
+    }
+  }
+}
+EOF
+
+    sudo tee $ROOT/etc/nginx/gfrh.include <<'EOF'
+include mime.types;
+default_type application/octet-stream;
+keepalive_timeout 25s;
+sendfile on;
+gzip on;
+
+add_header X-Frame-Options DENY;
+add_header X-Content-Type-Options nosniff;
+server_tokens off;
+
+log_format http 'HTTP [$status] $remote_addr:$remote_port -> $server_name:$server_port; request "$request"; length $request_length; accept "$http_accept"; referrer "$http_referer"; user agent "$http_user_agent"; sent $bytes_sent bytes';
+log_format https 'HTTPS [$status] $remote_addr:$remote_port -> $server_name:$server_port; protocol $ssl_protocol; cipher $ssl_cipher; request "$request"; length $request_length; accept "$http_accept"; referrer "$http_referer"; user agent "$http_user_agent"; sent $bytes_sent bytes';
+
+error_log syslog:server=unix:/dev/log warn;
+access_log syslog:server=unix:/dev/log http;
+
+ssl_session_timeout 5m;
+ssl_session_cache shared:SSL:50m;
+
+ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+ssl_ciphers 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:ECDHE-RSA-DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA';
+ssl_prefer_server_ciphers on;
+EOF
+
     echo "geoff ALL=(ALL) NOPASSWD: ALL" | sudo tee -a $ROOT/etc/sudoers
     sudo syslinux-install_update -i -a -m -c $ROOT/
 
-    sudo arch-chroot $ROOT <<EOF
+    sudo arch-chroot $ROOT <<'EOF'
 locale-gen
 systemctl enable dhcpcd.service
 systemctl enable sshd.service
 systemctl enable iptables.service
 systemctl enable ntpd.service
+# nginx not started by default
 pacman -Syy
 useradd --shell /bin/bash --create-home geoff
 mkinitcpio -p linux
