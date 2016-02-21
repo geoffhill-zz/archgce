@@ -1,5 +1,10 @@
 #!/bin/bash
 
+set -e
+
+pacman -Q arch-install-scripts
+pacman -Q syslinux
+
 HNAME="${HNAME:-arch.gfrh.net}"
 USERKEY=/home/geoff/.ssh/id_rsa.pub
 SIZE="${SIZE:-4G}"
@@ -7,11 +12,6 @@ SIZE="${SIZE:-4G}"
 randpass() {
     cat /dev/urandom | tr -dc "A-Fa-f0-9" | fold -w 32 | head -n 1
 }
-
-# Ensure the required utilities are installed.
-pacman -Q util-linux
-pacman -Q arch-install-scripts
-pacman -Q syslinux
 
 IMG=disk.raw
 rm -f $IMG
@@ -23,24 +23,11 @@ start=2048,size=128M,type=83,bootable
 type=83
 EOF
 
-LOOPDEV="$(losetup --find --show --partscan $IMG)"
-
-BOOTDEV=${LOOPDEV}p1
-ROOTDEV=${LOOPDEV}p2
-
-mkfs.ext4 -q -b 4096 -L boot $BOOTDEV
-mkfs.ext4 -q -b 4096 -L root $ROOTDEV
-
+LOOPDEV=$(./mountimg.sh)
 ROOT=$PWD/root
 BOOT=$ROOT/boot
-rm -rf $ROOT; mkdir $ROOT
-mount $ROOTDEV $ROOT
-mkdir $BOOT
-mount $BOOTDEV $BOOT
 
-set +e
 pacstrap -c -M $ROOT base syslinux openssh ntp sudo mg git tmux
-set -e
 
 cat >> $ROOT/etc/fstab <<'EOF'
 /dev/sda2  /       ext4    rw,relatime,data=ordered    0 1
@@ -90,7 +77,7 @@ echo ClientAliveInterval 450 >> $ROOT/etc/ssh/sshd_config
 echo "geoff ALL=(ALL) ALL" >> $ROOT/etc/sudoers
 syslinux-install_update -i -a -m -c $ROOT/
 
-arch-chroot $ROOT <<'EOF'
+arch-chroot $ROOT <<EOF
 locale-gen
 systemctl enable dhcpcd.service
 systemctl enable sshd.service
@@ -99,8 +86,8 @@ systemctl enable ntpd.service
 pacman -Syy
 useradd --shell /bin/bash --create-home geoff
 mkinitcpio -p linux
-#usermod -L root
 EOF
+rm -f $ROOT/.bash_history
 
 SSHDIR=$ROOT/home/geoff/.ssh
 mkdir $SSHDIR
@@ -109,9 +96,10 @@ cp $USERKEY $SSHDIR/authorized_keys
 chmod 600 $SSHDIR/authorized_keys
 chown -R 1000:1000 $SSHDIR
 
-umount -R $ROOT
-sync
-losetup -d $LOOPDEV
-sync
+echo -n Password:
+read -s userpass
 
-rmdir $ROOT
+echo "root:$userpass" | chpasswd --root $ROOT
+echo "geoff:$userpass" | chpasswd --root $ROOT
+
+./umountall.sh
