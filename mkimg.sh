@@ -9,10 +9,6 @@ HNAME="${HNAME:-arch.gfrh.net}"
 USERKEY=/home/geoff/.ssh/id_rsa.pub
 SIZE="${SIZE:-4G}"
 
-randpass() {
-    cat /dev/urandom | tr -dc "A-Fa-f0-9" | fold -w 32 | head -n 1
-}
-
 IMG=disk.raw
 rm -f $IMG
 truncate -s $SIZE $IMG
@@ -74,7 +70,7 @@ EOF
 echo ServerAliveInterval 450 >> $ROOT/etc/ssh/ssh_config
 echo ClientAliveInterval 450 >> $ROOT/etc/ssh/sshd_config
 
-echo "geoff ALL=(ALL) ALL" >> $ROOT/etc/sudoers
+echo "geoff ALL=(ALL) NOPASSWD: ALL" >> $ROOT/etc/sudoers
 syslinux-install_update -i -a -m -c $ROOT/
 
 arch-chroot $ROOT <<EOF
@@ -95,11 +91,5 @@ chmod 700 $SSHDIR
 cp $USERKEY $SSHDIR/authorized_keys
 chmod 600 $SSHDIR/authorized_keys
 chown -R 1000:1000 $SSHDIR
-
-echo -n Password:
-read -s userpass
-
-echo "root:$userpass" | chpasswd --root $ROOT
-echo "geoff:$userpass" | chpasswd --root $ROOT
 
 ./umountall.sh
