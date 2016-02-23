@@ -2,10 +2,11 @@
 
 archgce is a bash shell script library for lightweight deployment to Google
 Compute Engine from Arch Linux. It provides functions to create a raw disk
-with Arch Linux installed, and to upload it as a GCE image.
+with Arch Linux installed, and to upload it as a GCE image. Between those
+steps, the script can install packages and enable services.
 
-It is heavily customized for myself, with my preferred packages, username, GS
-bucket and some public keys hardcoded.
+It is heavily customized for myself, with my preferred packages, username,
+GS bucket and some public keys hardcoded.
 
 ### Requirements
 
@@ -24,23 +25,23 @@ Create a deployment script (`deploy.sh` by convention).
 
     . ./archgce/archgce.sh
 
-	export ROOT=$PWD/root
+    export ROOT=$PWD/root
 
     SIZE=4G HOSTNAME=example.com gce_create
 
     # Install the program and run any configuration...
-	sudo make install PREFIX=$ROOT/usr/local
-	sudo arch-chroot $ROOT pacman -S libbsd
-	sudo arch-chroot $ROOT systemctl enable program.service
+    sudo make install PREFIX=$ROOT/usr/local
+    sudo arch-chroot $ROOT pacman -S libbsd
+    sudo arch-chroot $ROOT systemctl enable program.service
 
     gce_unmount_all
-	IMAGENAME=example gce_publish
+    IMAGENAME=example gce_publish
 
 Then authenticate and run it:
 
-	$ gcloud auth login
-	$ gcloud config set project example-id
-	$ ./deploy.sh
+    $ gcloud auth login
+    $ gcloud config set project example-id
+    $ ./deploy.sh
 
 This would create a timestamped GCE image in the `example-id` project:
 
