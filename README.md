@@ -27,7 +27,7 @@ Create a deployment script (`deploy.sh` by convention).
 
     export ROOT=$PWD/root
 
-    SIZE=4G HOSTNAME=example.com gce_create
+    SIZE=4G IMAGEHOSTNAME=example.com gce_create
 
     # Install the program and run any configuration...
     sudo make install PREFIX=$ROOT/usr/local
