@@ -3,8 +3,8 @@
 # These each display an appropriate error message on failure.
 pacman -Q arch-install-scripts || exit 1
 pacman -Q syslinux || exit 1
-which gsutil >/dev/null || exit 1
-which gcloud >/dev/null || exit 1
+which gsutil || exit 1
+which gcloud || exit 1
 
 # GCE requires this name be used for the image file.
 IMG=disk.raw
