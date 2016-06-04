@@ -1,7 +1,8 @@
 #!/bin/sh
 
-pacman -Q arch-install-scripts
-pacman -Q syslinux
+# These each display an appropriate error message on failure.
+pacman -Q arch-install-scripts || exit 1
+pacman -Q syslinux || exit 1
 which gsutil >/dev/null || exit 1
 which gcloud >/dev/null || exit 1
 
